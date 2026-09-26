@@ -129,7 +129,7 @@
  
 <div class="ticker" id="rates">
   <div class="ticker-inner" id="tickerInner"></div>
-  <div class="rate-note">Rates updated by DMJ Jewellers · indicative, confirm at counter <button id="editBtn" type="button">Update rates</button></div>
+  <div class="rate-note" id="rateNote">Fetching live rates… <button id="editBtn" type="button">Manual override</button></div>
 </div>
  
 <main>
@@ -309,7 +309,7 @@
     document.getElementById(id).addEventListener('input', calcSilver);
   });
  
-  document.getElementById('editBtn').addEventListener('click', function(){
+  function openEditPrompt(){
     var g22 = prompt('22K gold rate per gram (₹):', rates.g22);
     if(g22 === null) return;
     g22 = parseFloat(g22); if(isNaN(g22) || g22 <= 0) return;
@@ -324,11 +324,32 @@
     renderTicker();
     calcGold();
     calcSilver();
-  });
+  }
  
   renderTicker();
   calcGold();
   calcSilver();
+ 
+  fetch('/api/rates', { cache: 'no-store' })
+    .then(function(r){ if(!r.ok) throw new Error('bad response'); return r.json(); })
+    .then(function(data){
+      if(data && data.g22 && data.silver){
+        rates = Object.assign({}, rates, { g24:data.g24, g22:data.g22, g18:data.g18, silver:data.silver });
+        saveRates(rates);
+        renderTicker();
+        calcGold();
+        calcSilver();
+        document.getElementById('rateNote').innerHTML =
+          'Live rate · updated ' + new Date(data.updated).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) +
+          ' <button id="editBtn" type="button">Manual override</button>';
+        document.getElementById('editBtn').addEventListener('click', openEditPrompt);
+      }
+    })
+    .catch(function(){
+      document.getElementById('rateNote').innerHTML =
+        'Rates updated by DMJ Jewellers · indicative, confirm at counter <button id="editBtn" type="button">Update rates</button>';
+      document.getElementById('editBtn').addEventListener('click', openEditPrompt);
+    });
 })();
 </script>
  
