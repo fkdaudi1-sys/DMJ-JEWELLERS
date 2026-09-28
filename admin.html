@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<title>DMJ Jewellers — Owner Rates</title>
+<style>
+  :root{--ink:#1b1211;--gold:#c9a227;--gold-lt:#e6c866;--ivory:#f6efe1;--ruby:#7a1f2b;--muted:#a9987a;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--ink);color:var(--ivory);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:24px 16px;padding-top:max(24px,env(safe-area-inset-top));}
+  .box{max-width:420px;margin:0 auto;background:#241512;border:1px solid rgba(201,162,39,.35);border-radius:8px;padding:26px;}
+  h1{font-family:Georgia,serif;font-size:1.4rem;margin:0 0 4px;color:var(--gold-lt);}
+  p.sub{margin:0 0 20px;color:var(--muted);font-size:.88rem;}
+  label{display:block;font-size:.82rem;color:var(--muted);margin:14px 0 5px;}
+  input{width:100%;padding:12px;border-radius:5px;border:1px solid #4a3a2c;background:#1b1211;color:var(--ivory);font-size:1rem;}
+  input:focus{outline:2px solid var(--gold);}
+  button{width:100%;margin-top:20px;padding:13px;border:none;border-radius:5px;background:var(--gold);color:var(--ink);font-weight:700;font-size:1rem;cursor:pointer;}
+  button.alt{background:none;border:1px solid rgba(201,162,39,.5);color:var(--gold-lt);font-weight:500;margin-top:12px;font-size:.88rem;}
+  button:disabled{opacity:.6;cursor:wait;}
+  #msg{margin-top:16px;font-size:.9rem;min-height:1.2em;}
+  .ok{color:#8fd694;} .err{color:#ff9a9a;}
+  hr{border:none;border-top:1px solid rgba(201,162,39,.25);margin:22px 0 0;}
+</style>
+</head>
+<body>
+<div class="box">
+  <h1>DMJ Jewellers · Owner</h1>
+  <p class="sub">Set today's rates (₹ per gram). Visitors see them within a minute.</p>
+
+  <label for="pw">Owner password</label>
+  <input id="pw" type="password" autocomplete="current-password" placeholder="Enter password">
+  <hr>
+  <label for="g24">24K gold (₹/gram)</label>
+  <input id="g24" type="number" inputmode="decimal" min="0" step="1">
+  <label for="g22">22K gold (₹/gram)</label>
+  <input id="g22" type="number" inputmode="decimal" min="0" step="1">
+  <label for="g18">18K gold (₹/gram)</label>
+  <input id="g18" type="number" inputmode="decimal" min="0" step="1">
+  <label for="silver">Silver (₹/gram)</label>
+  <input id="silver" type="number" inputmode="decimal" min="0" step="0.5">
+
+  <button id="save" type="button">Save today's rates</button>
+  <button id="clear" class="alt" type="button">Switch back to automatic market rates</button>
+  <div id="msg"></div>
+</div>
+
+<script>
+(function(){
+  var ids = ['g24','g22','g18','silver'];
+  var msg = document.getElementById('msg');
+  function show(t, ok){ msg.textContent = t; msg.className = ok ? 'ok' : 'err'; }
+
+  fetch('/api/rates', {cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+    ids.forEach(function(k){ if(d && d[k]) document.getElementById(k).value = d[k]; });
+  }).catch(function(){});
+
+  function send(payload, btn, okText){
+    var pw = document.getElementById('pw').value;
+    if(!pw){ show('Enter the owner password first.', false); return; }
+    payload.password = pw;
+    btn.disabled = true; show('Saving…', true);
+    fetch('/api/admin', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    }).then(function(r){ return r.json().then(function(j){ return {status:r.status, body:j}; }); })
+    .then(function(res){
+      btn.disabled = false;
+      if(res.body && res.body.ok){ show(okText, true); return; }
+      var e = res.body && res.body.error;
+      if(e === 'wrong_password') show('Wrong password.', false);
+      else if(e === 'invalid_numbers') show('Please enter valid numbers in all four boxes.', false);
+      else if(e === 'storage_not_connected') show('Storage is not connected in Vercel yet.', false);
+      else if(e === 'password_not_configured') show('Owner password is not set in Vercel yet.', false);
+      else show('Could not save. Try again.', false);
+    }).catch(function(){ btn.disabled = false; show('Network problem. Try again.', false); });
+  }
+
+  document.getElementById('save').addEventListener('click', function(){
+    var p = {};
+    ids.forEach(function(k){ p[k] = document.getElementById(k).value; });
+    send(p, this, 'Saved. Your website now shows these rates.');
+  });
+  document.getElementById('clear').addEventListener('click', function(){
+    send({action:'clear'}, this, 'Done. Website is back on automatic market rates.');
+  });
+})();
+</script>
+</body>
+</html>
