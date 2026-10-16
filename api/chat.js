@@ -84,6 +84,24 @@ Rules:
 }
 
 module.exports = async (req, res) => {
+  // Temporary check: open /api/chat?diag=1 in a browser to see why the assistant fails.
+  // Shows no secrets. Safe to delete this block once the chat works.
+  if (req.method === 'GET' && req.query && req.query.diag) {
+    const out = { keySet: !!process.env.GEMINI_API_KEY, model: MODEL };
+    if (out.keySet) {
+      try {
+        const t = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
+          method: 'POST',
+          headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY, 'content-type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'Say hi' }] }] })
+        });
+        out.geminiStatus = t.status;
+        const tj = await t.json().catch(() => ({}));
+        out.geminiMessage = (tj.error && tj.error.message) ? String(tj.error.message).slice(0, 300) : 'ok';
+      } catch (e) { out.geminiMessage = 'network_error'; }
+    }
+    return res.status(200).json(out);
+  }
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' });
   if (!process.env.GEMINI_API_KEY) return res.status(500).json({ error: 'not_configured' });
 
@@ -111,7 +129,7 @@ module.exports = async (req, res) => {
         generationConfig: { maxOutputTokens: 1000 }
       })
     });
-    if (!r.ok) throw new Error('ai_error');
+    if (!r.ok) throw new Error('ai_error ' + r.status);
     const j = await r.json();
     const parts = (((j.candidates || [])[0] || {}).content || {}).parts || [];
     let text = parts.map(p => p.text || '').join('').trim();
@@ -124,6 +142,7 @@ module.exports = async (req, res) => {
     }
     res.status(200).json({ reply: text || 'Sorry, please try again.', images });
   } catch (e) {
+    console.error('chat failed:', e && e.message);
     res.status(502).json({ error: 'chat_failed' });
   }
 };
