@@ -19,12 +19,23 @@ async function redisCmd(cmd) {
     headers: { Authorization: 'Bearer ' + c.token, 'Content-Type': 'application/json' },
     body: JSON.stringify(cmd)
   });
-  if (!r.ok) throw new Error('redis_error');
+  if (!r.ok) throw new Error('redis ' + r.status + ': ' + (await r.text()).slice(0, 200));
   const j = await r.json();
   return j.result;
 }
  
 module.exports = async (req, res) => {
+  // Temporary check: open /api/rates?diag=1 to see if saved rates can be read. No secrets shown.
+  if (req.query && req.query.diag) {
+    const out = { storageConfigured: !!redisConf() };
+    try {
+      const raw = await redisCmd(['GET', KEY]);
+      out.savedRatesFound = !!raw;
+      if (raw) { const d = JSON.parse(raw); out.savedUpdated = d.updated; out.saved22k = d.g22; }
+    } catch (e) { out.storageError = String((e && e.message) || e).slice(0, 300); }
+    return res.status(200).json(out);
+  }
+ 
   try {
     let manual = null;
     try {
@@ -48,7 +59,7 @@ module.exports = async (req, res) => {
     const gold = await goldRes.json();
     const silver = await silverRes.json();
  
-    res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate=3600');
+    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=60');
     res.status(200).json({
       g24: Math.round(gold.price_gram_24k),
       g22: Math.round(gold.price_gram_22k),
