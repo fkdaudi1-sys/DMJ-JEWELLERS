@@ -4,6 +4,7 @@
 // Optional: GEMINI_MODEL (default gemini-flash-latest).
  
 const MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
+const FALLBACK = process.env.GEMINI_FALLBACK_MODEL || 'gemini-flash-lite-latest'; // used when the main model is busy
 const PER_IP_DAILY = 30;     // messages per visitor per day
 const TOTAL_DAILY = 500;     // messages for the whole site per day
  
@@ -86,16 +87,25 @@ Rules:
 // Runs one chat turn. Throws an Error that includes Google's real message if it fails.
 async function runChat(req, msgs) {
   const rates = await getRates(req);
-  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: systemPrompt(rates) }] },
+    contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+    generationConfig: { maxOutputTokens: 1000 }
+  });
+  const call = model => fetch('https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent', {
     method: 'POST',
     headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt(rates) }] },
-      contents: msgs.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
-      generationConfig: { maxOutputTokens: 1000 }
-    })
+    body
   });
-  if (!r.ok) throw new Error('gemini ' + r.status + ': ' + (await r.text()).slice(0, 300));
+  let r = await call(MODEL);
+  let note = '';
+  if (!r.ok && [429, 500, 503].includes(r.status)) {
+    const first = r.status;
+    await new Promise(x => setTimeout(x, 500));
+    r = await call(FALLBACK);
+    note = 'main model ' + first + ', fallback ';
+  }
+  if (!r.ok) throw new Error(note + 'gemini ' + r.status + ': ' + (await r.text()).slice(0, 300));
   const j = await r.json();
   const cand = (j.candidates || [])[0] || {};
   const parts = (cand.content || {}).parts || [];
