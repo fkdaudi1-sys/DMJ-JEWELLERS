@@ -376,7 +376,7 @@
     list.forEach(function(p){
       var a=document.createElement('a'); a.href=p.link; a.target='_blank'; a.rel='noopener';
       var i=document.createElement('img'); i.src=p.thumb; i.alt=p.alt||'Jewellery design'; i.loading='lazy';
-      var c=document.createElement('span'); c.textContent='Photo: '+p.credit+' / Pexels';
+      var c=document.createElement('span'); c.textContent='Photo: '+p.credit+' / '+(p.source||'Pexels');
       a.appendChild(i); a.appendChild(c); g.appendChild(a);
     });
     log.appendChild(g); log.scrollTop=log.scrollHeight;
